@@ -600,7 +600,6 @@
     <button id="geolocation-btn">📍</button>
 
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <script>
         let tg = null;
@@ -615,7 +614,7 @@
 
         mapboxgl.accessToken = 'pk.eyJ1IjoiZGFuaWxhMTk5MyIsImEiOiJjbGdheGc3b2kxM3UxM2tydnAxZ3FoOHhvIn0.cXXu_P1Z7UZgV9UIbu5Yfw';
         
-        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTpm8JHvhLWle56zpDvzWfXGzv_7-HqNijPAU8-PHQaQZpEpM-T-RphUAPA1KGrc0JidzsoKhS4mYv6/pub?gid=1237596081&single=true&output=csv';
+        const API_URL = 'http://91.207.74.186:5000/api/spots';
         const CITY_CENTERS = {
             'Москва': { coords: [37.6173, 55.7558], zoom: 11 },
             'Санкт-Петербург': { coords: [30.3141, 59.9386], zoom: 11 },
@@ -648,31 +647,49 @@
 
         function loadData() {
             document.getElementById('loading').classList.add('active');
-            fetch(CSV_URL)
-                .then(r => r.text())
-                .then(parseCSV)
+            fetch(API_URL)
+                .then(r => r.json())
+                .then(parseData)
                 .catch(e => {
                     document.getElementById('loading').classList.remove('active');
                     alert('Ошибка загрузки данных');
                 });
         }
 
-        function parseCSV(csv) {
-            Papa.parse(csv, {
-                header: true,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    allSpotsData = results.data.filter(spot => {
-                        const lat = parseFloat(spot.lat);
-                        const lon = parseFloat(spot.lon);
-                        return !isNaN(lat) && !isNaN(lon);
-                    });
+        function parseData(response) {
+            // Маппим данные из API в формат карты
+            allSpotsData = response.spots
+                .filter(spot => spot.latitude && spot.longitude)
+                .map(spot => {
+                    // Извлекаем город из адреса (первое слово перед запятой)
+                    const city = spot.address ? spot.address.split(',')[0].trim() : 'Москва';
                     
-                    updateCityFilter();
-                    filterByCity(currentCity);
-                    document.getElementById('loading').classList.remove('active');
-                }
-            });
+                    // Маппим фото в формат image_url_1, image_url_2...
+                    const photoFields = {};
+                    if (spot.photos && Array.isArray(spot.photos)) {
+                        spot.photos.forEach((url, index) => {
+                            if (index < 5) { // Максимум 5 фото
+                                photoFields[`image_url_${index + 1}`] = url;
+                            }
+                        });
+                    }
+                    
+                    return {
+                        lat: spot.latitude,
+                        lon: spot.longitude,
+                        city: city,
+                        name: spot.name,
+                        address: spot.address,
+                        summary: spot.notes || '',
+                        category: spot.category,
+                        rating: spot.rating,
+                        ...photoFields
+                    };
+                });
+            
+            updateCityFilter();
+            filterByCity(currentCity);
+            document.getElementById('loading').classList.remove('active');
         }
 
         function updateCityFilter() {
