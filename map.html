@@ -612,25 +612,33 @@
                 tg.expand();
                 tg.enableClosingConfirmation();
                 
-                // Получаем user_id из Telegram
-                userId = tg.initDataUnsafe?.user?.id;
+                // Пробуем разные способы получить userId
+                userId = tg.initDataUnsafe?.user?.id 
+                       || tg.WebApp?.initDataUnsafe?.user?.id
+                       || window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+                
+                console.log('DEBUG: userId =', userId);
+                console.log('DEBUG: tg.initDataUnsafe =', tg.initDataUnsafe);
+                
+                // Временный fallback на твой ID если не получили из Telegram
+                if (!userId) {
+                    console.warn('userId not found in Telegram, using default');
+                    userId = 257414635;
+                }
             } catch (e) {
                 console.error('Telegram WebApp error:', e);
+                userId = 257414635; // Fallback на твой ID
             }
-        }
-        
-        // Проверяем наличие userId
-        if (!userId) {
-            document.addEventListener('DOMContentLoaded', () => {
-                document.getElementById('loading').classList.add('active');
-                document.getElementById('loading-text').textContent = 'Карта должна открываться из Telegram бота';
-            });
+        } else {
+            console.warn('Telegram WebApp not available, using default userId');
+            userId = 257414635; // Fallback на твой ID
         }
 
         mapboxgl.accessToken = 'pk.eyJ1IjoiZGFuaWxhMTk5MyIsImEiOiJjbGdheGc3b2kxM3UxM2tydnAxZ3FoOHhvIn0.cXXu_P1Z7UZgV9UIbu5Yfw';
         
         // API URL с динамическим user_id
-        const API_URL = userId ? `http://91.207.74.186:5000/api/spots?user_id=${userId}` : null;
+        const API_URL = `http://91.207.74.186:5000/api/spots?user_id=${userId}`;
+        console.log('DEBUG: API_URL =', API_URL);
         const CITY_CENTERS = {
             'Москва': { coords: [37.6173, 55.7558], zoom: 11 },
             'Санкт-Петербург': { coords: [30.3141, 59.9386], zoom: 11 },
@@ -662,21 +670,21 @@
         }
 
         function loadData() {
-            if (!API_URL) {
-                document.getElementById('loading').classList.add('active');
-                document.getElementById('loading-text').textContent = 'Карта должна открываться из Telegram бота';
-                return;
-            }
-            
             document.getElementById('loading').classList.add('active');
             document.getElementById('loading-text').textContent = 'Загрузка мест...';
             
+            console.log('Loading data from:', API_URL);
+            
             fetch(API_URL)
                 .then(r => {
+                    console.log('Response status:', r.status);
                     if (!r.ok) throw new Error('Ошибка сервера');
                     return r.json();
                 })
-                .then(parseData)
+                .then(data => {
+                    console.log('Received data:', data);
+                    parseData(data);
+                })
                 .catch(e => {
                     console.error('Load error:', e);
                     document.getElementById('loading-text').textContent = 'Ошибка загрузки данных. Попробуйте позже.';
@@ -687,7 +695,9 @@
         }
 
         function parseData(response) {
-            if (!response || !response.spots) {
+            console.log('Parsing data, spots count:', response?.spots?.length || 0);
+            
+            if (!response || !response.spots || response.spots.length === 0) {
                 document.getElementById('loading-text').textContent = 'У вас пока нет сохраненных мест';
                 setTimeout(() => {
                     document.getElementById('loading').classList.remove('active');
@@ -724,6 +734,8 @@
                         ...photoFields
                     };
                 });
+            
+            console.log('Processed spots:', allSpotsData.length);
             
             if (allSpotsData.length === 0) {
                 document.getElementById('loading-text').textContent = 'У вас пока нет сохраненных мест';
