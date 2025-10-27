@@ -600,21 +600,37 @@
     <button id="geolocation-btn">📍</button>
 
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
-    
+
     <script>
         let tg = null;
+        let userId = null;
+        
         if (window.Telegram?.WebApp) {
             try {
                 tg = window.Telegram.WebApp;
                 tg.ready();
                 tg.expand();
                 tg.enableClosingConfirmation();
-            } catch (e) {}
+                
+                // Получаем user_id из Telegram
+                userId = tg.initDataUnsafe?.user?.id;
+            } catch (e) {
+                console.error('Telegram WebApp error:', e);
+            }
+        }
+        
+        // Проверяем наличие userId
+        if (!userId) {
+            document.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('loading').classList.add('active');
+                document.getElementById('loading-text').textContent = 'Карта должна открываться из Telegram бота';
+            });
         }
 
         mapboxgl.accessToken = 'pk.eyJ1IjoiZGFuaWxhMTk5MyIsImEiOiJjbGdheGc3b2kxM3UxM2tydnAxZ3FoOHhvIn0.cXXu_P1Z7UZgV9UIbu5Yfw';
         
-        const API_URL = 'http://91.207.74.186:5000/api/spots';
+        // API URL с динамическим user_id
+        const API_URL = userId ? `http://91.207.74.186:5000/api/spots?user_id=${userId}` : null;
         const CITY_CENTERS = {
             'Москва': { coords: [37.6173, 55.7558], zoom: 11 },
             'Санкт-Петербург': { coords: [30.3141, 59.9386], zoom: 11 },
@@ -646,17 +662,39 @@
         }
 
         function loadData() {
+            if (!API_URL) {
+                document.getElementById('loading').classList.add('active');
+                document.getElementById('loading-text').textContent = 'Карта должна открываться из Telegram бота';
+                return;
+            }
+            
             document.getElementById('loading').classList.add('active');
+            document.getElementById('loading-text').textContent = 'Загрузка мест...';
+            
             fetch(API_URL)
-                .then(r => r.json())
+                .then(r => {
+                    if (!r.ok) throw new Error('Ошибка сервера');
+                    return r.json();
+                })
                 .then(parseData)
                 .catch(e => {
-                    document.getElementById('loading').classList.remove('active');
-                    alert('Ошибка загрузки данных');
+                    console.error('Load error:', e);
+                    document.getElementById('loading-text').textContent = 'Ошибка загрузки данных. Попробуйте позже.';
+                    setTimeout(() => {
+                        document.getElementById('loading').classList.remove('active');
+                    }, 3000);
                 });
         }
 
         function parseData(response) {
+            if (!response || !response.spots) {
+                document.getElementById('loading-text').textContent = 'У вас пока нет сохраненных мест';
+                setTimeout(() => {
+                    document.getElementById('loading').classList.remove('active');
+                }, 3000);
+                return;
+            }
+            
             // Маппим данные из API в формат карты
             allSpotsData = response.spots
                 .filter(spot => spot.latitude && spot.longitude)
@@ -686,6 +724,14 @@
                         ...photoFields
                     };
                 });
+            
+            if (allSpotsData.length === 0) {
+                document.getElementById('loading-text').textContent = 'У вас пока нет сохраненных мест';
+                setTimeout(() => {
+                    document.getElementById('loading').classList.remove('active');
+                }, 3000);
+                return;
+            }
             
             updateCityFilter();
             filterByCity(currentCity);
