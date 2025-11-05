@@ -709,8 +709,8 @@ console.log('DEBUG: API_URL =', API_URL);
             allSpotsData = response.spots
                 .filter(spot => spot.latitude && spot.longitude)
                 .map(spot => {
-                    // Извлекаем город из адреса (первое слово перед запятой)
-                    const city = spot.address ? spot.address.split(',')[0].trim() : 'Москва';
+                    // ✅ ИСПРАВЛЕНО: Используем поле city из базы данных
+                    const city = spot.city || 'Москва';
                     
                     // Маппим фото в формат image_url_1, image_url_2...
                     const photoFields = {};
