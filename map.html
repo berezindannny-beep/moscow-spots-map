@@ -612,7 +612,6 @@
                 tg.expand();
                 tg.enableClosingConfirmation();
                 
-                // Пробуем разные способы получить userId
                 userId = tg.initDataUnsafe?.user?.id 
                        || tg.WebApp?.initDataUnsafe?.user?.id
                        || window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
@@ -620,25 +619,24 @@
                 console.log('DEBUG: userId =', userId);
                 console.log('DEBUG: tg.initDataUnsafe =', tg.initDataUnsafe);
                 
-                // Временный fallback на твой ID если не получили из Telegram
                 if (!userId) {
                     console.warn('userId not found in Telegram, using default');
                     userId = 257414635;
                 }
             } catch (e) {
                 console.error('Telegram WebApp error:', e);
-                userId = 257414635; // Fallback на твой ID
+                userId = 257414635;
             }
         } else {
             console.warn('Telegram WebApp not available, using default userId');
-            userId = 257414635; // Fallback на твой ID
+            userId = 257414635;
         }
 
         mapboxgl.accessToken = 'pk.eyJ1IjoiZGFuaWxhMTk5MyIsImEiOiJjbGdheGc3b2kxM3UxM2tydnAxZ3FoOHhvIn0.cXXu_P1Z7UZgV9UIbu5Yfw';
         
-        // API URL с динамическим user_id
         const API_URL = `https://berezindan.hlab.kz/api/spots?user_id=${userId}&t=${Date.now()}`;
-console.log('DEBUG: API_URL =', API_URL);
+        console.log('DEBUG: API_URL =', API_URL);
+        
         const CITY_CENTERS = {
             'Москва': { coords: [37.6173, 55.7558], zoom: 11 },
             'Санкт-Петербург': { coords: [30.3141, 59.9386], zoom: 11 },
@@ -646,7 +644,7 @@ console.log('DEBUG: API_URL =', API_URL);
         };
         
         let map, markers = [], markersData = [], userLocationMarker = null;
-        let allSpotsData = [], currentCity = 'Москва', currentIndex = 0, currentCitySpots = [];
+        let allSpotsData = [], currentCity = null, currentIndex = 0, currentCitySpots = [];
         let isExpanded = false, currentGalleryIndex = 0;
         let startX = 0, startY = 0, isDragging = false;
         let sheetStartY = 0, isSheetDragging = false;
@@ -655,8 +653,8 @@ console.log('DEBUG: API_URL =', API_URL);
             map = new mapboxgl.Map({
                 container: 'map',
                 style: 'mapbox://styles/mapbox/light-v11',
-                center: CITY_CENTERS[currentCity].coords,
-                zoom: CITY_CENTERS[currentCity].zoom,
+                center: [37.6173, 55.7558],
+                zoom: 11,
                 pitch: 0,
                 bearing: 0
             });
@@ -705,18 +703,16 @@ console.log('DEBUG: API_URL =', API_URL);
                 return;
             }
             
-            // Маппим данные из API в формат карты
             allSpotsData = response.spots
                 .filter(spot => spot.latitude && spot.longitude)
                 .map(spot => {
                     // ✅ ИСПРАВЛЕНО: Используем поле city из базы данных
                     const city = spot.city || 'Москва';
                     
-                    // Маппим фото в формат image_url_1, image_url_2...
                     const photoFields = {};
                     if (spot.photos && Array.isArray(spot.photos)) {
                         spot.photos.forEach((url, index) => {
-                            if (index < 5) { // Максимум 5 фото
+                            if (index < 5) {
                                 photoFields[`image_url_${index + 1}`] = url;
                             }
                         });
@@ -745,6 +741,10 @@ console.log('DEBUG: API_URL =', API_URL);
                 return;
             }
             
+            // ✅ ИСПРАВЛЕНО: Устанавливаем currentCity как первый город из данных
+            currentCity = allSpotsData[0].city || 'Москва';
+            console.log('Initial city set to:', currentCity);
+            
             updateCityFilter();
             filterByCity(currentCity);
             document.getElementById('loading').classList.remove('active');
@@ -752,6 +752,8 @@ console.log('DEBUG: API_URL =', API_URL);
 
         function updateCityFilter() {
             const cities = [...new Set(allSpotsData.map(s => s.city).filter(Boolean))];
+            console.log('Available cities:', cities);
+            
             const select = document.getElementById('city-select');
             select.innerHTML = cities.map(city => 
                 `<option value="${city}" ${city === currentCity ? 'selected' : ''}>${city}</option>`
@@ -761,10 +763,10 @@ console.log('DEBUG: API_URL =', API_URL);
             
             select.onchange = (e) => {
                 currentCity = e.target.value;
+                console.log('City changed to:', currentCity);
                 closeBottomSheet();
                 filterByCity(currentCity);
                 
-                // ИСПРАВЛЕНО: правильная передача параметров в flyTo
                 if (CITY_CENTERS[currentCity]) {
                     const center = CITY_CENTERS[currentCity];
                     map.flyTo({ 
@@ -787,6 +789,7 @@ console.log('DEBUG: API_URL =', API_URL);
 
         function filterByCity(city) {
             currentCitySpots = allSpotsData.filter(s => s.city === city);
+            console.log(`Filtered ${currentCitySpots.length} spots for city:`, city);
             addMarkers(currentCitySpots);
             document.getElementById('counter-number').textContent = currentCitySpots.length;
             document.getElementById('counter').classList.add('active');
